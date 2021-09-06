@@ -1,0 +1,127 @@
+listusers () {
+  #listsusers: list all non-system user accounts (i.e. UID > 999) optional [USERS: ALL,normal,admin,service] and [OUTPUT: name,description,almostall,csv,table,tablefull] and [GROUP_INFO: GROUP,nogroup,complete]
+  # Purpose: List all non-system accounts - normal, admin (nalx), service (svc) in a variety of output options, include group and/or chage information
+  #awk -F: '{ if ($3 > 999 && $3 < 60001) print $1 }' /etc/passwd | grep -v nalx | sort
+  #grep 'firstname.lastname.suffix' /etc/group | grep -v '^firstname.lastname.suffix' | awk -F: '{ printf "%s ", $1 }'
+  USER_TYPE=${1:-all}
+  OUTPUT_OPTION=${2} # default option as per cat|grep /etc/password #${2:-name}
+  ADMIN_SUFFIX=nalx  # admin, admins, administrator, administrators
+  SERVICE_PREFIX=svc
+  GROUP_INFO=${3:-group}
+  # Additional feature maybe to sort by surname (firstname or rather normal account name is the default/unsorted order
+  # Test would be if username field has firstname.lastname or firstname.lastname.suffix
+  #SORT_BY=${4}
+  case ${USER_TYPE} in
+  all | default | user | users )
+    USER_TYPE=all
+    ;;
+  normal | limited )
+    USER_TYPE=limited
+    ;;
+  $ADMIN_SUFFIX | admin | admins | administrator | administrators )
+    USER_TYPE=${ADMIN_SUFFIX}
+    ;;
+  ${SERVICE_PREFIX} | svc | service | services )
+    USER_TYPE=${SERVICE_PREFIX}
+    ;;
+  esac
+ 
+  # Add header if csv or table format
+  header_array=()
+  case ${OUTPUT_OPTION} in
+    csv | comma | ft | formattable | table | fulltable | tablefull )
+      if [ "${GROUP_INFO}" == "complete" ]; then
+        header_array=("username:pw:uid:gid:comment:home directory:shell:secondary groups:password changed:password expires:account expires:min:max:warn")
+      elif [ "${GROUP_INFO}" == "group" ]; then
+        header_array=("username:pw:uid:gid:comment:home directory:shell:secondary groups")
+      else
+        header_array=("username:pw:uid:gid:comment:home directory:shell")
+      fi # end if: GROUP_INFO
+      ;;
+    *)
+      # name, description|desc, almostall|almost
+      header_array=()
+      ;;
+  esac
+ 
+  # Populate base user information
+  # Set IFS so that each line will become and element in the array
+  SAVE_IFS="$IFS"
+  IFS=$'\n'
+  if [ "${USER_TYPE}" == "all" ]; then  # Original: #if [ $# -eq 0 -o "${USER_TYPE}" == "all" ]; then
+    IFS=$'\n' read -r -d '' -a user_array < <( awk -F: '{ if ($3 > 999 && $3 < 60001) print $0 }' /etc/passwd | sort )
+  elif [ "${USER_TYPE}" == "limited" ]; then
+    IFS=$'\n' read -r -d '' -a user_array < <( awk -F: '{ if ($3 > 999 && $3 < 60001) print $0 }' /etc/passwd | grep -Ev "${ADMIN_SUFFIX}|${SERVICE_PREFIX}" | sort )
+  elif [ "${USER_TYPE}" == "${ADMIN_SUFFIX}" -o "${USER_TYPE}" == "${SERVICE_PREFIX}" ]; then
+   IFS=$'\n' read -r -d '' -a user_array < <( awk -F: '{ if ($3 > 999 && $3 < 60001) print $0 }' /etc/passwd | grep ${USER_TYPE} | sort )
+  fi
+ 
+  # Populate each user's group information from /etc/group
+  if [ "${GROUP_INFO}" == "group" -o "${GROUP_INFO}" == "complete" ]; then
+    user_groupinfo_array=()
+    for line in "${user_array[@]}" ; do
+      USERS_NAME=$( printf '%s' ${line} | awk -F: '{ print $1 }' )
+      # search /etc/group for user's name, but remove the UPG, print the remaining groups, removing the tailing space
+      USERS_GROUPS=$( grep ${USERS_NAME} /etc/group |  grep -v ^${USERS_NAME} | awk -F: '{ printf "%s ", $1 }' | sed "s/ $//" )
+      user_groupinfo_array+=("${line}:${USERS_GROUPS}")
+    done
+    # Originally added header here with this if and and else directly below it.
+    # Have now rewritten Add header information later after collection all user-related data
+    #data_array=(${header_array[@]} ${user_groupinfo_array[@]})
+    data_array=("${user_groupinfo_array[@]}")  # trying to set "data_array so can add it and it will have different data
+                                               # i.e. here just user group information, below your group and complete information
+  fi
+ 
+  # Populate user account information from chage -l username
+  # either populate a separate array and then join to "user group" or else at end add header + group + complete account info
+  # Initial attempt - join group and complete here
+  if [ "${GROUP_INFO}" == "complete" ]; then
+    user_completeinfo_array=()
+    for dataline in "${data_array[@]}" ; do
+      USERS_NAME=$( printf '%s' ${dataline} | awk -F: '{ print $1 }' )
+      # From the chage command, keep only the 2nd column, remove the "," fro the date, replace newline with ":" so the
+      # data has the same field separator as /etc/passwd. Finally replace long warning
+      COMPLETE_DATA_PER_USER=$(chage -l ${USERS_NAME} | awk -F': ' '{print $2 }' | tr -d ',' | tr '\n' ':' | sed 's/password must be changed/change password/g' )
+      user_completeinfo_array+=("${dataline}:${COMPLETE_DATA_PER_USER}")
+    done
+    #data_array=("${user_completeinfo_array[@]}")
+  fi
+ 
+  # Merge base, group, commplete arrays with header array
+  if [ "${GROUP_INFO}" == "complete" ]; then
+    data_array=(${header_array[@]} ${user_completeinfo_array[@]})
+    # Other option, if would be to, say, join the arrays individually here
+    #data_array=(${header_array[@]} ${user_groupinfo_array[@]} ${user_chageinfo_array)
+  elif [ "${GROUP_INFO}" == "group" ]; then
+    data_array=(${header_array[@]} ${user_groupinfo_array[@]})
+  else
+    data_array=(${header_array[@]} ${user_array[@]})
+  fi
+ 
+  # Print data in specified format: Field 8 will be ignored when no group information included.
+  # Use sed to remove ": " and "," when last charactrs on line.
+  # Different separaters depending on type, csv ",", table ";"  (separater in /etc/passwd, /etc/group ":")
+  for line in "${data_array[@]}" ; do
+    if [[ "${OUTPUT_OPTION}" == "name" || "${OUTPUT_OPTION}" == "nameonly" ]]; then
+      printf '%s\n' "${line}" | awk -F: '{ print $1 }'
+    elif [[ "${OUTPUT_OPTION}" == "desc" || "${OUTPUT_OPTION}" == "description" ]]; then
+      printf '%s\n' "${line}" | awk -F: '{ print $1, $5 }'
+    elif [[ "${OUTPUT_OPTION}" == "almost" || "${OUTPUT_OPTION}" == "almostall" ]]; then
+      #printf '%s\n' "${line}" | awk -F: '{ print $1,":",$3,":",$5,":",$6,":",$7,":",$8 }'
+      printf '%s\n' "${line}" | awk -F: '{ print $1,":",$3,":",$5,":",$6,":",$7,":",$8 }' | sed 's/\: $//'
+    elif [[ "${OUTPUT_OPTION}" == "csv" || "${OUTPUT_OPTION}" == "comma" ]]; then
+      #printf '%s\n' "${line}" | awk -F: '{ print $1","$3","$5","$6","$7","$8 }' | sed 's/\,$//'
+      printf '%s\n' "${line}" | awk -F: 'BEGIN { OFS = "," } { $2=$4=""; print $0 }' | sed "s/^,//;s/,$//;s/,,/,/g" # | sed 's/\,$//'
+    elif [[ "${OUTPUT_OPTION}" == "ft" ||"${OUTPUT_OPTION}" == "formattable" || "${OUTPUT_OPTION}" == "table" ]]; then
+      #printf '%s\n' "${line}" | awk -F: '{ print $1";"$3";"$5";"$6";"$7";"$8 }'
+      printf '%s\n' "${line}" | awk -F: '{ print $1";"$3";"$5";"$6";"$7";"$8 }'  # Not required - column
+    elif [[ "${OUTPUT_OPTION}" == "fulltable" || "${OUTPUT_OPTION}" == "tablefull" ]]; then
+      #printf '%s\n' "${line}" | awk -F: '{ print $0 }'  | sed -e 's/:/;/g'
+      printf '%s\n' "${line}" | awk -F: '{ print $0 }'  | sed -e 's/:/;/g'
+    else
+      printf '%s\n' "${line}" | awk -F: '{ print $0 }'
+    fi
+  done | column -s";" -t
+  IFS=$SAVE_IFS
+}
+alias get-useraccounts="listusers"
