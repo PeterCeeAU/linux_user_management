@@ -61,7 +61,7 @@ listusers () {
     user_groupinfo_array=()
     for line in "${user_array[@]}" ; do
       USERS_NAME=$( printf '%s' ${line} | awk -F: '{ print $1 }' )
-      # search /etc/group for user's name, but remove the UPG, print the remaining groups, removing the tailing space
+      # search /etc/group for user's name, but remove the UPG, print the remaining groups, removing the trailing space
       USERS_GROUPS=$( grep ${USERS_NAME} /etc/group |  grep -v ^${USERS_NAME} | awk -F: '{ printf "%s ", $1 }' | sed "s/ $//" )
       user_groupinfo_array+=("${line}:${USERS_GROUPS}")
     done
@@ -85,7 +85,7 @@ listusers () {
   # Merge base, group, commplete arrays with header array
   if [ "${ADDITIONAL_INFO}" == "complete" ]; then
     data_array=(${header_array[@]} ${user_completeinfo_array[@]})
-    # Other option, if would be to, say, join the arrays individually here
+    # Other option, would be to, say, join the arrays individually here
     #data_array=(${header_array[@]} ${user_groupinfo_array[@]} ${user_chageinfo_array)
   elif [ "${ADDITIONAL_INFO}" == "group" ]; then
     data_array=(${header_array[@]} ${user_groupinfo_array[@]})
