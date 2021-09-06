@@ -1,5 +1,5 @@
 listusers () {
-  #listsusers: list all non-system user accounts (i.e. UID > 999) optional [USERS: ALL,normal,admin,service] and [OUTPUT: name,description,almostall,csv,table,tablefull] and [GROUP_INFO: GROUP,nogroup,complete]
+  #listsusers: list all non-system user accounts (i.e. UID > 999) optional [USERS: ALL,normal,admin,service] and [OUTPUT: name,description,almostall,csv,table,tablefull] and [ADDITIONAL_INFO: GROUP,nogroup,complete]
   # Purpose: List all non-system accounts - normal, admin (nalx), service (svc) in a variety of output options, include group and/or chage information
   #awk -F: '{ if ($3 > 999 && $3 < 60001) print $1 }' /etc/passwd | grep -v nalx | sort
   #grep 'firstname.lastname.suffix' /etc/group | grep -v '^firstname.lastname.suffix' | awk -F: '{ printf "%s ", $1 }'
@@ -7,7 +7,7 @@ listusers () {
   OUTPUT_OPTION=${2} # default option as per cat|grep /etc/password #${2:-name}
   ADMIN_SUFFIX=nalx  # admin, admins, administrator, administrators
   SERVICE_PREFIX=svc
-  GROUP_INFO=${3:-group}
+  ADDITIONAL_INFO=${3:-group}
   # Additional feature maybe to sort by surname (firstname or rather normal account name is the default/unsorted order
   # Test would be if username field has firstname.lastname or firstname.lastname.suffix
   #SORT_BY=${4}
@@ -30,13 +30,13 @@ listusers () {
   header_array=()
   case ${OUTPUT_OPTION} in
     csv | comma | ft | formattable | table | fulltable | tablefull )
-      if [ "${GROUP_INFO}" == "complete" ]; then
+      if [ "${ADDITIONAL_INFO}" == "complete" ]; then
         header_array=("username:pw:uid:gid:comment:home directory:shell:secondary groups:password changed:password expires:account expires:min:max:warn")
-      elif [ "${GROUP_INFO}" == "group" ]; then
+      elif [ "${ADDITIONAL_INFO}" == "group" ]; then
         header_array=("username:pw:uid:gid:comment:home directory:shell:secondary groups")
       else
         header_array=("username:pw:uid:gid:comment:home directory:shell")
-      fi # end if: GROUP_INFO
+      fi # end if: ADDITIONAL_INFO
       ;;
     *)
       # name, description|desc, almostall|almost
@@ -57,7 +57,7 @@ listusers () {
   fi
  
   # Populate each user's group information from /etc/group
-  if [ "${GROUP_INFO}" == "group" -o "${GROUP_INFO}" == "complete" ]; then
+  if [ "${ADDITIONAL_INFO}" == "group" -o "${ADDITIONAL_INFO}" == "complete" ]; then
     user_groupinfo_array=()
     for line in "${user_array[@]}" ; do
       USERS_NAME=$( printf '%s' ${line} | awk -F: '{ print $1 }' )
@@ -75,7 +75,7 @@ listusers () {
   # Populate user account information from chage -l username
   # either populate a separate array and then join to "user group" or else at end add header + group + complete account info
   # Initial attempt - join group and complete here
-  if [ "${GROUP_INFO}" == "complete" ]; then
+  if [ "${ADDITIONAL_INFO}" == "complete" ]; then
     user_completeinfo_array=()
     for dataline in "${data_array[@]}" ; do
       USERS_NAME=$( printf '%s' ${dataline} | awk -F: '{ print $1 }' )
@@ -88,11 +88,11 @@ listusers () {
   fi
  
   # Merge base, group, commplete arrays with header array
-  if [ "${GROUP_INFO}" == "complete" ]; then
+  if [ "${ADDITIONAL_INFO}" == "complete" ]; then
     data_array=(${header_array[@]} ${user_completeinfo_array[@]})
     # Other option, if would be to, say, join the arrays individually here
     #data_array=(${header_array[@]} ${user_groupinfo_array[@]} ${user_chageinfo_array)
-  elif [ "${GROUP_INFO}" == "group" ]; then
+  elif [ "${ADDITIONAL_INFO}" == "group" ]; then
     data_array=(${header_array[@]} ${user_groupinfo_array[@]})
   else
     data_array=(${header_array[@]} ${user_array[@]})
