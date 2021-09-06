@@ -6,8 +6,8 @@ listusers () {
   USER_TYPE=${1:-all}
   OUTPUT_OPTION=${2} # default option as per cat|grep /etc/password #${2:-name}
   ADMIN_SUFFIX=nalx  # admin, admins, administrator, administrators
-  SERVICE_PREFIX=svc
-  ADDITIONAL_INFO=${3:-group}
+  SERVICE_PREFIX=svc  # svc, service, services
+  ADDITIONAL_INFO=${3:-group}  # group, nogroup, complete
   # Additional feature maybe to sort by surname (firstname or rather normal account name is the default/unsorted order
   # Test would be if username field has firstname.lastname or firstname.lastname.suffix
   #SORT_BY=${4}
@@ -45,7 +45,7 @@ listusers () {
   esac
  
   # Populate base user information
-  # Set IFS so that each line will become and element in the array
+  # Set IFS so that each line will become an element in the array
   SAVE_IFS="$IFS"
   IFS=$'\n'
   if [ "${USER_TYPE}" == "all" ]; then  # Original: #if [ $# -eq 0 -o "${USER_TYPE}" == "all" ]; then
@@ -65,16 +65,11 @@ listusers () {
       USERS_GROUPS=$( grep ${USERS_NAME} /etc/group |  grep -v ^${USERS_NAME} | awk -F: '{ printf "%s ", $1 }' | sed "s/ $//" )
       user_groupinfo_array+=("${line}:${USERS_GROUPS}")
     done
-    # Originally added header here with this if and and else directly below it.
-    # Have now rewritten Add header information later after collection all user-related data
-    #data_array=(${header_array[@]} ${user_groupinfo_array[@]})
-    data_array=("${user_groupinfo_array[@]}")  # trying to set "data_array so can add it and it will have different data
-                                               # i.e. here just user group information, below your group and complete information
+    data_array=("${user_groupinfo_array[@]}")
   fi
  
   # Populate user account information from chage -l username
   # either populate a separate array and then join to "user group" or else at end add header + group + complete account info
-  # Initial attempt - join group and complete here
   if [ "${ADDITIONAL_INFO}" == "complete" ]; then
     user_completeinfo_array=()
     for dataline in "${data_array[@]}" ; do
@@ -101,6 +96,7 @@ listusers () {
   # Print data in specified format: Field 8 will be ignored when no group information included.
   # Use sed to remove ": " and "," when last charactrs on line.
   # Different separaters depending on type, csv ",", table ";"  (separater in /etc/passwd, /etc/group ":")
+  # NOTE: until getopts or other mechanism is implemented - need to specify first agrument for this to work
   for line in "${data_array[@]}" ; do
     if [[ "${OUTPUT_OPTION}" == "name" || "${OUTPUT_OPTION}" == "nameonly" ]]; then
       printf '%s\n' "${line}" | awk -F: '{ print $1 }'
@@ -110,11 +106,9 @@ listusers () {
       #printf '%s\n' "${line}" | awk -F: '{ print $1,":",$3,":",$5,":",$6,":",$7,":",$8 }'
       printf '%s\n' "${line}" | awk -F: '{ print $1,":",$3,":",$5,":",$6,":",$7,":",$8 }' | sed 's/\: $//'
     elif [[ "${OUTPUT_OPTION}" == "csv" || "${OUTPUT_OPTION}" == "comma" ]]; then
-      #printf '%s\n' "${line}" | awk -F: '{ print $1","$3","$5","$6","$7","$8 }' | sed 's/\,$//'
       printf '%s\n' "${line}" | awk -F: 'BEGIN { OFS = "," } { $2=$4=""; print $0 }' | sed "s/^,//;s/,$//;s/,,/,/g" # | sed 's/\,$//'
     elif [[ "${OUTPUT_OPTION}" == "ft" ||"${OUTPUT_OPTION}" == "formattable" || "${OUTPUT_OPTION}" == "table" ]]; then
-      #printf '%s\n' "${line}" | awk -F: '{ print $1";"$3";"$5";"$6";"$7";"$8 }'
-      printf '%s\n' "${line}" | awk -F: '{ print $1";"$3";"$5";"$6";"$7";"$8 }'  # Not required - column
+      printf '%s\n' "${line}" | awk -F: '{ print $1";"$3";"$5";"$6";"$7";"$8 }'
     elif [[ "${OUTPUT_OPTION}" == "fulltable" || "${OUTPUT_OPTION}" == "tablefull" ]]; then
       #printf '%s\n' "${line}" | awk -F: '{ print $0 }'  | sed -e 's/:/;/g'
       printf '%s\n' "${line}" | awk -F: '{ print $0 }'  | sed -e 's/:/;/g'
